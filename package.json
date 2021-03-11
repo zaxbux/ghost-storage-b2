@@ -1,5 +1,5 @@
 {
-  "name": "ghost-storage-b2",
+  "name": "@zaxbux/ghost-storage-b2",
   "version": "0.0.1",
   "description": "Backblaze B2 storage adapter for Ghost.",
   "main": "dist/index.js",
