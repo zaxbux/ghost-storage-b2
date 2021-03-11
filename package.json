@@ -1,0 +1,46 @@
+{
+  "name": "ghost-storage-b2",
+  "version": "0.0.1",
+  "description": "Backblaze B2 storage adapter for Ghost.",
+  "main": "dist/index.js",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "npm run-script clean && babel ./src --out-dir ./dist",
+    "clean": "rm -rf ./dist && mkdir ./dist",
+    "prepublish": "npm run-script build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zaxbux/ghost-storage-b2.git"
+  },
+  "author": {
+    "name": "Zachary Schneider",
+    "email": "hello@zacharyschneider.ca",
+    "url": "https://www.zacharyschneider.ca"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zaxbux/ghost-storage-b2/issues"
+  },
+  "homepage": "https://github.com/zaxbux/ghost-storage-b2#readme",
+  "devDependencies": {
+    "debug": "4.3.1",
+    "@babel/cli": "7.13.0",
+    "@babel/core": "7.13.8",
+    "@babel/preset-env": "7.13.8",
+    "babel-plugin-add-module-exports": "1.0.4"
+  },
+  "dependencies": {
+    "ghost-storage-base": "0.0.5",
+    "@tryghost/errors": "^0.2.9",
+    "axios": "^0.21.1",
+    "backblaze-b2": "^1.6.0",
+    "bluebird": "^3.7.2"
+  },
+  "engines": {
+    "node": ">=10.0.0"
+  }
+}
