@@ -3,7 +3,7 @@ import path from 'path';
 import Debug from 'debug';
 import B2 from 'backblaze-b2';
 import Promise from 'bluebird';
-import { errors } from '@tryghost/errors';
+import errors from '@tryghost/errors';
 import BaseStorage from 'ghost-storage-base';
 
 const debug = Debug('ghost-storage-b2');
@@ -209,22 +209,25 @@ class BackblazeB2Adapter extends BaseStorage {
 	 * @returns {Promise.<*>}
 	 */
 	read(options) {
-		debug(`ghost-storage-b2] read -> ${options.path}`);
+		const fileName = options.path.replace(this._getDownloadUrl(''), '');
+		debug(`read -> ${fileName}`);
 
 		return new Promise((resolve, reject) => {
 			this.client.downloadFileByName({
 				bucketName: this._config.bucketName,
-				fileName: options.path,
-				axios: {
+				fileName: fileName,
+				axiosOverride: {
 					responseType: 'arraybuffer',
 				},
 			}).then((res) => {
 				if (res.status === 200) {
-					debug('read (success)')
-					resolve(Buffer.from(res.data, 'binary'));
+					debug('read (success)');
+					return resolve(Buffer.from(res.data, 'binary'));
 				}
 
-				reject(this._readError(res));
+				//reject(this._readError(res));
+			}).catch((err) => {
+				reject(this._readError(err.response));
 			});
 		});
 	}
