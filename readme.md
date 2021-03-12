@@ -17,7 +17,7 @@ You will need to obtain or create app keys and create a bucket in your B2 Cloud 
 
 If your Ghost configuration file, add the B2 configuration options:
 
-```json
+```jsonc
 {
 	// ...
 

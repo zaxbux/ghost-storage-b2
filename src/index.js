@@ -64,7 +64,7 @@ class BackblazeB2Adapter extends BaseStorage {
 		this.client = new B2({
 			applicationKeyId: this._config.applicationKeyId,
 			applicationKey: this._config.applicationKey,
-			axiosOverride: {
+			axios: {
 				headers: {
 					'User-Agent': `ghost-storage-b2/0.0.1 github.com/zaxbux/ghost-storage-b2`,
 				},
@@ -139,38 +139,26 @@ class BackblazeB2Adapter extends BaseStorage {
 
 			debug(`exists -> filePath: ${filePath}`);
 
-			/*this.client.listFileVersions({
-				bucketId: this.bucketId,
-				prefix: filePath,
-			}).then((res) => {
-				if (res.status !== 200) {
-					debug(`exists (error) ->`, res.data);
-
-					return reject(res.data.code);
-				}
-
-				resolve(res.data.files.length > 0);
-			});*/
 			this.client.downloadFileByName({
 				bucketName: this._config.bucketName,
 				fileName: filePath,
-				axios: {
+				axiosOverride: {
 					method: 'head',
 				}
 			}).then((res) => {
 				if (res.status === 200) {
 					debug('exists -> true');
-					resolve(true);
+					return resolve(true);
 				}
-
-				if (res.status === 404) {
+			}).catch((e) => {
+				if (e.response.status === 404) {
 					debug('exists -> false');
-					resolve(false);
+					return resolve(false);
 				}
 
-				debug(`exists (error) ->`, res.data);
+				debug(`exists (error)`);
 
-				reject(res.data.code);
+				throw e;
 			});
 		});
 	}
@@ -291,12 +279,12 @@ class BackblazeB2Adapter extends BaseStorage {
 	/**
 	 * Upload a file buffer to B2.
 	 * @private
-	 * @param {string}  fileName The name to store the buffer at.
 	 * @param {Buffer}  buffer   The file data.
+	 * @param {string}  fileName The name to store the buffer at.
 	 * @param {boolean} reAuth   Obtain another authorization token if necessary.
 	 * @returns {Promise.<*>}
 	 */
-	_upload(fileName, buffer, reAuth = true) {
+	_upload(buffer, fileName, reAuth = true) {
 		return new Promise((resolve, reject) => {
 			this.client.getUploadUrl({
 				bucketId: this._config.bucketId,
