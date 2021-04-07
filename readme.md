@@ -19,17 +19,17 @@ If your Ghost configuration file, add the B2 configuration options:
 
 ```jsonc
 {
-	// ...
+  // ...
 
-	"storage": {
-		"active": "b2",
-		"b2": {
-			"applicationKeyId": "",
-			// See table below for all config values
-		}
-	}
+  "storage": {
+    "active": "b2",
+    "b2": {
+      "applicationKeyId": "",
+      // See table below for all config values
+    }
+  }
 
-	// ...
+  // ...
 }
 ```
 
@@ -48,7 +48,7 @@ Alternatively, the B2 storage adapter can be configured with environment variabl
 
 If you're using a custom domain instead of the default backblaze domain, e.g. with a CNAME pointing `cdn.example.com` to `f001.backblazeb2.com`, and your bucket name is `my_bucket`:
 
- * Set `downloadUrl` to **https://cdn.example.com/file/my_bucket**
+ * Set **downloadUrl** to `https://cdn.example.com/file/my_bucket`
 
 ## Debugging
 
