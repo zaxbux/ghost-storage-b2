@@ -2,27 +2,24 @@ import fs from 'fs';
 import path from 'path';
 import Debug from 'debug';
 import B2 from 'backblaze-b2';
-import Promise from 'bluebird';
+import B2Bucket from 'backblaze-b2/dist/bucket';
 import errors from '@tryghost/errors';
-import BaseStorage from 'ghost-storage-base';
+import  StorageBase from 'ghost-storage-base';
 
 const debug = Debug('ghost-storage-b2');
-const readFileAsync = Promise.promisify(fs.readFile);
 
 /**
- * @typedef  {Object}  AdapterConfig    Ghost storage adapter configuration object.
- * @property {string}  applicationKeyId The application key ID for the B2 API.
- * @property {string}  applicationKey   The application key for the B2 API.
- * @property {string}  bucketId         The ID of the B2 bucket.
- * @property {string}  bucketName       The name of the B2 bucket.
- * @property {string=} pathPrefix       Optional path to the root of B2 storage.
- * @property {string=} downloadUrl      The remote address of the B2 endpoint.
+ * @typedef  {Object} AdapterConfig    Ghost storage adapter configuration object.
+ * @property {string} applicationKeyId The application key ID for the B2 API.
+ * @property {string} applicationKey   The application key for the B2 API.
+ * @property {string} bucketId         The ID of the B2 bucket.
+ * @property {string} [bucketName]     The name of the B2 bucket.
+ * @property {string} [pathPrefix]     Optional path to the root of B2 storage.
+ * @property {string} [downloadUrl]    The remote address of the B2 endpoint.
  */
 
 /**
- * @typedef {Object} Image
- * @property {string} name
- * @property {string} path
+ * @typedef {import('ghost-storage-base').Image} Image
  */
 
 /**
@@ -31,14 +28,15 @@ const readFileAsync = Promise.promisify(fs.readFile);
  */
 
 /**
- * Backblaze B2 storage adapter class for the Ghost v3.x publishing platform.
+ * @classdesc Backblaze B2 storage adapter class for the Ghost publishing platform.
  * @version 0.0.1
  * @author Zachary Schneider <hello@zacharyschneider.ca>
- * @extends StorageBase
+ * @augments StorageBase
  */
-class BackblazeB2Adapter extends BaseStorage {
+class BackblazeB2Adapter extends StorageBase {
 	/**
 	 * Create a Backblaze B2 adapter.
+	 * 
 	 * @constructor
 	 * @throws {Error}
 	 * @param {AdapterConfig} config
@@ -46,8 +44,11 @@ class BackblazeB2Adapter extends BaseStorage {
 	constructor(config = {}) {
 		super();
 
-		// Create configuration
-		this._config = {
+		/**
+		 * @private
+		 * @type {object}
+		 */
+		this.config = {
 			applicationKeyId: process.env.B2_APPLICATION_KEY_ID || config.applicationKeyId,
 			applicationKey:   process.env.B2_APPLICATION_KEY    || config.applicationKey,
 			bucketId:         process.env.B2_BUCKET_ID          || config.bucketId,
@@ -56,14 +57,18 @@ class BackblazeB2Adapter extends BaseStorage {
 			pathPrefix:       process.env.B2_PATH_PREFIX        || config.pathPrefix,
 		};
 
-		if (!this._config.applicationKeyId || !this._config.applicationKey || !this._config.bucketId) {
+		if (!this.config.applicationKeyId || !this.config.applicationKey || !this.config.bucketId) {
 			throw new Error('B2 storage adaptor requires applicationKey, applicationKeyId, and bucketId.');
 		}
 
-		// Initialize API client
-		this.client = new B2({
-			applicationKeyId: this._config.applicationKeyId,
-			applicationKey: this._config.applicationKey,
+		/**
+		 * @private
+		 * @type {B2}
+		 */
+		this.b2 = new B2({
+			applicationKeyId: this.config.applicationKeyId,
+			applicationKey: this.config.applicationKey,
+		}, {
 			axios: {
 				headers: {
 					'User-Agent': `ghost-storage-b2/0.0.1 github.com/zaxbux/ghost-storage-b2`,
@@ -71,102 +76,118 @@ class BackblazeB2Adapter extends BaseStorage {
 			},
 		});
 
+		/**
+		 * @private
+		 * @type {B2Bucket}
+		 */
+		this.bucket = null;
+		
+		// Call async methods outside of the constructor
+		this.authorize();
+	}
+
+	/**
+	 * Authorize the B2 API client and get the bucket information.
+	 * @private
+	 */
+	async authorize() {
 		// Get an authorization token
-		this._authorize().then((res) => {
-			debug(`authorized for account: ${res.data.accountId}`);
+		await this.b2.authorize();
 
+		debug(`B2 Account: ${this.b2.authorization.accountId}`);
+
+		if (this.config.bucketId && this.config.bucketName) {
+			this.bucket = new B2Bucket({
+				bucketId:   this.config.bucketId,
+				bucketName: this.config.bucketName,
+			}, this.b2);
+		}
+	
+		if (!this.bucket) {
 			// Use the bucket name from the auth request, if available
-			if (res.data.allowed.bucketId === this._config.bucketId) {
-				this._config.bucketName = res.data.allowed.bucketName;
-				debug(`app key bucket restriction: ${this._config.bucketName}`);
-			}
+			if (this.b2.authorization.hasBucketRestriction(this.config.bucketId)) {
+				debug(`B2 Application Key restriction found, using that bucket`);
 
-			// Bucket name not set, get bucket name from B2 API
-			if (!this._config.bucketName) {
-				this._config.bucketName = this._getBucketName(this._config.bucketId);
-				debug(`got bucket name: ${this._config.bucketName}`);
+				// Create a bare-bones bucket object
+				this.bucket = new B2Bucket({
+					bucketId:   this.b2.authorization.getBucketRestriction().bucketId,
+					bucketName: this.b2.authorization.getBucketRestriction().bucketName,
+				}, this.b2);
+			} else {
+				debug('Contacting B2 API for bucket name...');
+				// Get bucket name from B2 API
+				await this.b2.bucket.get({ bucketId: this.config.bucketId }).then((bucket) => {
+					this.bucket =  bucket;
+				});
 			}
-		});
+		}
+	
+		debug(`B2 Bucket: ${this.bucket.bucketName}#${this.bucket.bucketId}`);
+
+		// Use download URL from authorization response if not already set
+		if (!this.config.downloadUrl) {
+			this.config.downloadUrl = `${this.b2.authorization.downloadUrl}/file/${this.bucket.bucketName}`;
+		}
+
+		debug(`Download URL: ${this.config.downloadUrl}`);
+		
 	}
 	
 	/**
 	 * Saves a buffer at targetPath, enables Ghost's automatic responsive images.
 	 * @param {Buffer} buffer File buffer
 	 * @param {string} targetPath File name
-	 * @returns {Promise.<*>}
+	 * @returns {Promise<string>}
 	 */
-	saveRaw(buffer, targetPath) {
-		debug(`saveRaw -> ${targetPath}`);
+	async saveRaw(buffer, targetPath) {
+		debug(`saveRaw( targetPath: '${targetPath}' )`);
 
-		const storagePath = path.join(this._config.pathPrefix || '', targetPath);
-		const targetDir = path.dirname(storagePath);
+		const storagePath = path.join(this.config.pathPrefix || '', targetPath);
+		//const targetDir = path.dirname(storagePath);
 
-		return this._upload(buffer, storagePath);
+		return await this.upload(buffer, storagePath);
 	}
 
 	/**
 	 * Read a file and upload to B2.
 	 * @param {Image} image File path to image.
 	 * @param {string} targetDir 
-	 * @returns {Promise.<*>}
+	 * @returns {Promise<string>}
 	 */
-	save(image, targetDir) {
-		debug(`save -> ${image.path} / ${image.name} @ target: ${targetDir}`);
+	async save(image, targetDir) {
+		debug(`save( image: '${JSON.stringify(image)}', target: '${targetDir}' )`);
 
-		const directory = targetDir || this.getTargetDir(this.pathPrefix);
+		const directory = path.join(this.config.pathPrefix, targetDir || this.getTargetDir());
 
-		return new Promise((resolve, reject) => {
-			Promise.all([
-				readFileAsync(image.path),
-				this.getUniqueFileName(image, directory),
-			])
-			.then(([buffer, fileName]) => resolve(this._upload(buffer, fileName)))
-			.catch(error => reject(error));
-		})
+		const buffer = fs.readFileSync(image.path);
+		// StorageBase.getUniqueFileName() returns a {Promise}, await is necessary
+		const name = await this.getUniqueFileName(image, directory);
+		return await this.upload(buffer, name);
 	}
 
 	/**
 	 * Check whether the file exists or not.
 	 * @param {string} fileName File path.
-	 * @param {string} targetDir
-	 * @returns {Promise.<boolean>}
+	 * @param {string} [targetDir] Target
+	 * @returns {Promise<boolean>}
 	 */
-	exists(fileName, targetDir) {
-		debug(`exists -> ${fileName} @ target ${targetDir}`);
+	async exists(fileName, targetDir) {
+		debug(`exists( fileName: '${fileName}', target: '${targetDir}' )`);
 
-		return new Promise((resolve, reject) => {
-			const filePath = path.join(targetDir || this.getTargetDir(this._config.pathPrefix), fileName);
+		const filePath = path.join(this.config.pathPrefix, targetDir || this.getTargetDir(), fileName);
 
-			debug(`exists -> filePath: ${filePath}`);
-
-			this.client.downloadFileByName({
-				bucketName: this._config.bucketName,
-				fileName: filePath,
-				axiosOverride: {
-					method: 'head',
-				}
-			}).then((res) => {
-				if (res.status === 200) {
-					debug('exists -> true');
-					return resolve(true);
-				}
-			}).catch((e) => {
-				if (e.response.status === 404) {
-					debug('exists -> false');
-					return resolve(false);
-				}
-
-				debug(`exists (error)`);
-
-				throw e;
-			});
+		const exists = await this.bucket.fileExists({
+			fileName: filePath,
 		});
+
+		debug(`\t Result: ${exists}`);
+
+		return exists;
 	}
 
 	/**
-	 * No-op, since requests are made directly
 	 * @static
-	 * @returns {function(*, *, *)}
+	 * @returns {function(*, *, *)} No-op, since requests are made directly to Backblaze
 	 */
 	serve() {
 		return (req, res, next) => {
@@ -176,93 +197,81 @@ class BackblazeB2Adapter extends BaseStorage {
 
 	/**
 	 * Delete all versions of a file.
+	 * 
 	 * @param {string} fileName
-	 * @param {string=} targetDir
-	 * @returns {Promise.<boolean>}
+	 * @param {string} [targetDir]
+	 * @returns {Promise<boolean>}
 	 */
-	delete(fileName, targetDir = null) {
-		debug(`delete -> ${fileName} @ target ${targetDir}`);
-		const filePath = path.join(targetDir || this.getTargetDir(this._config.pathPrefix), fileName);
+	async delete(fileName, targetDir) {
+		debug(`delete( fileName: '${fileName}', target: '${targetDir}' )`);
+		const filePath = path.join(this.config.pathPrefix, targetDir || this.getTargetDir(), fileName);
 
-		debug(`delete file: ${filePath}`);
+		debug(`\tB2 file name: ${filePath}`);
 
-		this.client.listFileVersions({
-			bucketId: this.bucketId,
-			prefix: filePath,
-			//startFileName: filePath,
-			maxFileCount: 1000
-		}).then((res) => {
-			res.data.files.forEach((file) => {
-				debug(`delete file version: ${file.fileId}`);
-
-				this.client.deleteFileVersion({
-					fileId: file.fileId,
-					fileName: filePath,
-				});
-			})
+		const count = this.b2.file.deleteAllVersions({
+			bucketId: this.config.bucketId,
+			fileName: filePath,
 		});
+
+		debug(`\t Deleted ${count} versions`);
+
+		return count > 0;
 	}
 
 	/**
 	 * Reads bytes from the B2 endpoint and returns them as a buffer.
-	 * @param {ReadOptions} options
-	 * @returns {Promise.<*>}
+	 * 
+	 * @param {ReadOptions} options The file to download from B2.
+	 * 
+	 * @returns {Promise<Buffer>}
 	 */
-	read(options) {
-		const fileName = options.path.replace(this._getDownloadUrl(''), '');
-		debug(`read -> ${fileName}`);
+	async read(options) {
+		debug(`read( ${JSON.stringify(options)} )`);
 
-		return new Promise((resolve, reject) => {
-			this.client.downloadFileByName({
-				bucketName: this._config.bucketName,
+		const fileName = options.path.replace(this.getDownloadUrl(''), '');
+
+		debug(`\tB2 file name: ${fileName}`)
+
+		try {
+			const response = await this.b2.file.downloadByName({
+				bucketName: this.bucket.bucketName,
 				fileName: fileName,
-				axiosOverride: {
+				axios: {
 					responseType: 'arraybuffer',
 				},
-			}).then((res) => {
-				if (res.status === 200) {
-					debug('read (success)');
-					return resolve(Buffer.from(res.data, 'binary'));
-				}
-
-				//reject(this._readError(res));
-			}).catch((err) => {
-				reject(this._readError(err.response));
 			});
-		});
-	}
 
-	/**
-	 * Authorize the B2 API client.
-	 * @private
-	 * @returns {Promise.<*>}
-	 */
-	_authorize() {
-		debug('Requesting authorization token');
+			if (response.status === 200) {
+				debug(`\tDownloaded ${response.headers['content-length']} bytes`);
 
-		return this.client.authorize();
-	}
+				return Buffer.from(response.data, 'binary');
+			}
 
-	/**
-	 * Get the name for the bucket from it's ID.
-	 * @private
-	 * @param {string}  bucketId The ID of the bucket.
-	 * @returns {Promise.<string>}
-	 */
-	_getBucketName(bucketId) {
-		return new Promise ((resolve, reject) => {
-			this.client.getBucket({
-				bucketId: bucketId,
-			}).then((res) => {
-				const buckets = res.data.buckets || [];
+		} catch (error) {
+			const statusCode = error.axiosError.response.status;
+			let message;
+
+			if (error.axiosError.response.data && error.axiosError.response.data.code) {
+				message = error.axiosError.response.data.code;
+			}
+
+			switch (statusCode) {
+				case 400:
+					throw new errors.BadRequestError({ message });
+
+				case 401:
+					throw new errors.UnauthorizedError({ message });
+
+				case 403:
+					throw new errors.NoPermissionError({ message });
+
+				case 404:
+					throw new errors.NotFoundError({ message });
 				
-				if (!buckets[0]) {
-					return reject('bucket not found');
-				}
-
-				resolve(buckets[0].bucketId);
-			});
-		});
+				default:
+					throw new errors.InternalServerError({ message });
+			}
+		}
 	}
 
 	/**
@@ -271,12 +280,8 @@ class BackblazeB2Adapter extends BaseStorage {
 	 * @param {string} filePath The file path.
 	 * @returns {string}
 	 */
-	_getDownloadUrl(filePath) {
-		if (this._config.downloadUrl) {
-			return `${this._config.downloadUrl}/${filePath}`;
-		}
-
-		return `${this.client.downloadUrl}/file/${this._config.bucketName}/${filePath}`;
+	getDownloadUrl(filePath) {
+		return `${this.config.downloadUrl}/${filePath}`;
 	}
 
 	/**
@@ -284,82 +289,26 @@ class BackblazeB2Adapter extends BaseStorage {
 	 * @private
 	 * @param {Buffer}  buffer   The file data.
 	 * @param {string}  fileName The name to store the buffer at.
-	 * @param {boolean} reAuth   Obtain another authorization token if necessary.
-	 * @returns {Promise.<*>}
+	 * @returns {Promise<string>} The URL to download the file.
 	 */
-	_upload(buffer, fileName, reAuth = true) {
-		return new Promise((resolve, reject) => {
-			this.client.getUploadUrl({
-				bucketId: this._config.bucketId,
-			}).then((res) => {
-				if (res.status == 401 && (res.data.code == 'bad_auth_token' || res.data.code == 'expired_auth_token')) {
-					debug('Get upload URL failed:', res.data.message);
+	async upload(buffer, fileName) {
+		debug(`upload( fileName: '${fileName}' )`);
 
-					if (!reAuth) {
-						return reject(res.data.code);
-					}
-
-					// re-authorize
-					this.client.authorize().then(() => {
-						debug('re-auth')
-						return resolve(this._upload(fileName, buffer, false));
-					});
-				}
-
-				debug(`Starting upload for ${fileName}`)
-
-				this.client.uploadFile({
-					uploadUrl: res.data.uploadUrl,
-					uploadAuthToken: res.data.authorizationToken,
-					fileName: fileName,
-					data: buffer
-				}).then((res) => {
-					debug(`Uploaded: ${fileName}`)
-					return resolve(`${this._getDownloadUrl(fileName)}`);
-				});
-			});
+		const response = await this.b2.file.upload({
+			fileName: fileName,
+			bucketId: this.config.bucketId,
+			data: buffer,
 		});
-	}
 
-	/**
-	 * Resolve a B2 API error into a Ghost error.
-	 * @private
-	 * @param res The API response.
-	 * @returns {Error}
-	 */
-	_readError(res) {
-		if (res.status === 400) {
-			debug(`read (error) -> ${res.data.code}`)
-			return new errors.BadRequestError({
-				message: res.data.code || undefined,
-			});
-		}
+		if (response.status === 200) {
+			debug(`\t B2 File ID: ${response.data.fileId}`);
 
-		if (res.status === 401) {
-			debug(`read (error) -> ${res.data.code}`)
-			return new errors.UnauthorizedError({
-				message: res.data.code || undefined,
-			});
-		}
+			const url = this.getDownloadUrl(fileName);
 
-		if (res.status === 403) {
-			debug(`read (error) -> ${res.data.code}`)
-			return new errors.NoPermissionError({
-				message: res.data.code || undefined,
-			});
-		}
+			debug(`\t URL: ${url}`);
 
-		if (res.status === 404) {
-			debug(`read (error) -> ${res.data.code}`)
-			return new errors.NotFoundError({
-				message: res.data.code || undefined,
-			});
+			return url;
 		}
-		
-		debug(`read (error) -> ${res.data.code}`)
-		return new errors.InternalServerError({
-			message: res.data.code || undefined,
-		});
 	}
 }
 
