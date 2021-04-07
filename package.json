@@ -1,6 +1,6 @@
 {
   "name": "@zaxbux/ghost-storage-b2",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Backblaze B2 storage adapter for Ghost.",
   "main": "dist/index.js",
   "files": [
@@ -8,9 +8,10 @@
   ],
   "scripts": {
     "build": "npm run-script clean && babel ./src --out-dir ./dist",
+    "watch": "watch 'npm run-script build' ./src",
     "clean": "rm -rf ./dist && mkdir ./dist",
     "prepublish": "npm run-script build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha"
   },
   "repository": {
     "type": "git",
@@ -27,20 +28,21 @@
   },
   "homepage": "https://github.com/zaxbux/ghost-storage-b2#readme",
   "devDependencies": {
+    "@babel/cli": "^7.13",
+    "@babel/core": "^7.13",
+    "@babel/preset-env": "^7.13",
+    "babel-plugin-add-module-exports": "1.0.4",
+    "backblaze-b2": "github:zaxbux/backblaze-b2#76539bb002a71f0ee08cbead8339677fdd70541c",
+    "chai": "^4.3.4",
     "debug": "4.3.1",
-    "@babel/cli": "7.13.0",
-    "@babel/core": "7.13.8",
-    "@babel/preset-env": "7.13.8",
-    "babel-plugin-add-module-exports": "1.0.4"
+    "mocha": "8.3.2",
+    "nock": "^13.0.11"
   },
   "dependencies": {
-    "ghost-storage-base": "0.0.5",
     "@tryghost/errors": "^0.2.9",
-    "axios": "^0.21.1",
-    "backblaze-b2": "^1.6.0",
-    "bluebird": "^3.7.2"
+    "ghost-storage-base": "0.0.5"
   },
   "engines": {
-    "node": ">=10.0.0"
+    "node": ">=12.0.0"
   }
 }
