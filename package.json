@@ -1,6 +1,6 @@
 {
   "name": "@zaxbux/ghost-storage-b2",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Backblaze B2 storage adapter for Ghost.",
   "main": "dist/index.js",
   "files": [
@@ -32,7 +32,6 @@
     "@babel/core": "^7.13",
     "@babel/preset-env": "^7.13",
     "babel-plugin-add-module-exports": "1.0.4",
-    "backblaze-b2": "github:zaxbux/backblaze-b2#76539bb002a71f0ee08cbead8339677fdd70541c",
     "chai": "^4.3.4",
     "debug": "4.3.1",
     "mocha": "8.3.2",
@@ -40,7 +39,8 @@
   },
   "dependencies": {
     "@tryghost/errors": "^0.2.9",
-    "ghost-storage-base": "0.0.5"
+    "ghost-storage-base": "0.0.5",
+    "backblaze-b2": "github:zaxbux/backblaze-b2#76539bb002a71f0ee08cbead8339677fdd70541c"
   },
   "engines": {
     "node": ">=12.0.0"
