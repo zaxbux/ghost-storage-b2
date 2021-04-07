@@ -88,6 +88,7 @@ class BackblazeB2Adapter extends StorageBase {
 
 	/**
 	 * Authorize the B2 API client and get the bucket information.
+	 * 
 	 * @private
 	 */
 	async authorize() {
@@ -135,6 +136,7 @@ class BackblazeB2Adapter extends StorageBase {
 	
 	/**
 	 * Saves a buffer at targetPath, enables Ghost's automatic responsive images.
+	 * 
 	 * @param {Buffer} buffer File buffer
 	 * @param {string} targetPath File name
 	 * @returns {Promise<string>}
@@ -150,6 +152,7 @@ class BackblazeB2Adapter extends StorageBase {
 
 	/**
 	 * Read a file and upload to B2.
+	 * 
 	 * @param {Image} image File path to image.
 	 * @param {string} targetDir 
 	 * @returns {Promise<string>}
@@ -157,7 +160,7 @@ class BackblazeB2Adapter extends StorageBase {
 	async save(image, targetDir) {
 		debug(`save( image: '${JSON.stringify(image)}', target: '${targetDir}' )`);
 
-		const directory = path.join(this.config.pathPrefix, targetDir || this.getTargetDir());
+		const directory = path.join(this.config.pathPrefix || '', targetDir || this.getTargetDir());
 
 		const buffer = fs.readFileSync(image.path);
 		// StorageBase.getUniqueFileName() returns a {Promise}, await is necessary
@@ -167,6 +170,7 @@ class BackblazeB2Adapter extends StorageBase {
 
 	/**
 	 * Check whether the file exists or not.
+	 * 
 	 * @param {string} fileName File path.
 	 * @param {string} [targetDir] Target
 	 * @returns {Promise<boolean>}
@@ -174,7 +178,7 @@ class BackblazeB2Adapter extends StorageBase {
 	async exists(fileName, targetDir) {
 		debug(`exists( fileName: '${fileName}', target: '${targetDir}' )`);
 
-		const filePath = path.join(this.config.pathPrefix, targetDir || this.getTargetDir(), fileName);
+		const filePath = path.join(this.config.pathPrefix || '', targetDir || this.getTargetDir(), fileName);
 
 		const exists = await this.bucket.fileExists({
 			fileName: filePath,
@@ -204,7 +208,7 @@ class BackblazeB2Adapter extends StorageBase {
 	 */
 	async delete(fileName, targetDir) {
 		debug(`delete( fileName: '${fileName}', target: '${targetDir}' )`);
-		const filePath = path.join(this.config.pathPrefix, targetDir || this.getTargetDir(), fileName);
+		const filePath = path.join(this.config.pathPrefix || '', targetDir || this.getTargetDir(), fileName);
 
 		debug(`\tB2 file name: ${filePath}`);
 
@@ -228,7 +232,7 @@ class BackblazeB2Adapter extends StorageBase {
 	async read(options) {
 		debug(`read( ${JSON.stringify(options)} )`);
 
-		const fileName = options.path.replace(this.getDownloadUrl(''), '');
+		const fileName = options.path.replace(this.getDownloadUrl(), '').replace(/^\//, '');
 
 		debug(`\tB2 file name: ${fileName}`)
 
@@ -248,6 +252,8 @@ class BackblazeB2Adapter extends StorageBase {
 			}
 
 		} catch (error) {
+			debug(error);
+
 			const statusCode = error.axiosError.response.status;
 			let message;
 
@@ -281,7 +287,11 @@ class BackblazeB2Adapter extends StorageBase {
 	 * @returns {string}
 	 */
 	getDownloadUrl(filePath) {
-		return `${this.config.downloadUrl}/${filePath}`;
+		if (filePath) {
+			return `${this.config.downloadUrl}/${filePath}`;
+		}
+
+		return this.config.downloadUrl;
 	}
 
 	/**
